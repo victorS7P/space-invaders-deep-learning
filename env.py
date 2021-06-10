@@ -44,7 +44,7 @@ class Env():
 
     frame = frame[20:len(frame)-13, 0:len(frame[0])-50]
 
-    frame = cv2.resize(frame, (85, 85), interpolation=cv2.INTER_NEAREST)
-    frame = numpy.reshape(frame, (85, 85, 1))
+    frame = cv2.resize(frame, (100, 100), interpolation=cv2.INTER_NEAREST)
+    frame = numpy.reshape(frame, (100, 100, 1))
 
     return numpy.array(frame)

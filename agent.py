@@ -10,7 +10,7 @@ from tensorflow.keras import optimizers, losses, models
 class Agent:
   def __init__ (self, state_shape, actions):
     # set model file name
-    self.model_name = time.strftime("%Y-%m-%d_%H:%M:%S", time.gmtime())
+    self.model_name = time.strftime("%Y-%m-%d-%H-%M-%S", time.gmtime())
     self.model_path = './models/{name}'.format(name=self.model_name)
     self.checkpoints_path = '{m}/checkpoints'.format(m=self.model_path)
 
@@ -28,21 +28,25 @@ class Agent:
     self.actions = actions
     self.actions_n = len(self.actions)
 
-    self.gamma = 0.90
-    self.epsilon = 1
+    self.gamma = 0.9
+    self.epsilon = 1.0
     self.epsilon_min = 0.1
-    self.epsilon_decay = 0.9990
+    self.epsilon_max = 1.0
+    self.epsilon_interval = (self.epsilon_max - self.epsilon_min)
+    self.epsilon_random_frames = 50000
+    self.epsilon_greedy_frames = 100000
+
 
     self.batch_size = 32
 
-    self.model = self.build_model(self.state_shape, self.actions_n)
-    self.model_target = self.build_model(self.state_shape, self.actions_n)
+    self.model = build_model(self.state_shape, self.actions_n)
+    self.model_target = build_model(self.state_shape, self.actions_n)
     self.loss_function = losses.Huber()
 
     self.learn_after_actions = 4
     self.update_target_model = 10000
     self.max_memory_length = 100000
-    self.checkpoint_each = 10000
+    self.checkpoint_each_episode = 100
 
     self.memory_action         = []
     self.memory_state          = []
@@ -51,7 +55,7 @@ class Agent:
     self.memory_done           = []
 
   @staticmethod
-  def replay (env, path, amount=1, fps=60, checkpooint=False):
+  def replay (env, path, checkpooint=False, amount=1, fps=180):
     state = env.reset()
 
     if checkpooint:
@@ -100,22 +104,22 @@ class Agent:
       del self.memory_action[:1]
       del self.memory_done[:1]
 
-  def run (self, state):
-    if np.random.rand() < self.epsilon:
-      action = random.randint(0, self.actions_n - 1)
+  def run (self, state, frame_count):
+    if (frame_count < self.epsilon_random_frames or self.epsilon > np.random.rand(1)[0]):
+      action = random.randint(0, self.actions_n - 1)      
     else:
       state_tensor = tf.convert_to_tensor(state)
       state_tensor = tf.expand_dims(state_tensor, 0)
       action_probs = self.model(state_tensor, training=False)
       action = tf.argmax(action_probs[0]).numpy()
 
-    self.epsilon *= self.epsilon_decay
+    self.epsilon -= self.epsilon_interval / self.epsilon_greedy_frames
     self.epsilon = max(self.epsilon, self.epsilon_min)
 
     return action
 
-  def learn (self, frame_count):
-    optimizer = optimizers.Adam(learning_rate=0.00025, clipnorm=1.0)
+  def learn (self, frame_count,):
+    optimizer = optimizers.Adam(learning_rate=0.00001, clipnorm=1.0)
 
     if (frame_count % self.learn_after_actions == 0 and len(self.memory_done) > self.batch_size):
       # Get indices of samples for replay buffers
@@ -173,8 +177,9 @@ class Agent:
       # update the the target network with new weights
       self.model_target.set_weights(self.model.get_weights())
 
-    if (frame_count % self.checkpoint_each == 0):
-      self.model.save_weights('{p}/{f}.check'.format(p=self.checkpoints_path, f=frame_count))
-
   def save (self):
     self.model.save(self.model_name + '.model')
+
+  def checkpoint (self, episode_count):
+    if (episode_count % self.checkpoint_each_episode == 0):
+      self.model.save_weights('{p}/{e}.check'.format(p=self.checkpoints_path, e=episode_count))

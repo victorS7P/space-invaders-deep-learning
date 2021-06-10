@@ -8,7 +8,7 @@ from config import should_replay_checkpoint, checkpoint_path
 # Environment
 env = Env()
 if should_replay_checkpoint:
-  Agent.replay(env, checkpoint_path, 1, 60, True)
+  Agent.replay(env, checkpoint_path, True)
 
   exit()
 
@@ -24,21 +24,25 @@ frame_count     = 0
 running_reward  = 0
 episode_count   = 0
 episode_log     = 1
-frame_count     = 0
 
 while True:
   state = env.reset()
+
   episode_reward = 0
+
+  episode_frame_count = 0
 
   start = time.time()
   for timestamp in range(1, max_steps_per_episode):
+
     frame_count += 1
+    episode_frame_count += 1
 
     # Show env
-    # env.render()
+    env.render()
 
     # Run agent
-    action = agent.run(state)
+    action = agent.run(state, frame_count)
 
     # Perform action
     next_state, reward, done, info = env.step(action)
@@ -60,21 +64,6 @@ while True:
     if done:
       break
 
-  if (episode_count % episode_log == 0):
-    print(
-      'Episode {e:6d} - '
-      'Frame {f:7d} - '
-      'Frames/sec {fs:7.2f} - '
-      'Epsilon {eps:7.2f} - '
-      'Mean Reward {r:7.2f}'.format(
-        e=episode_count,
-        f=frame_count,
-        fs=frame_count / (time.time() - start),
-        eps=agent.epsilon,
-        r=running_reward
-      )
-    )
-
   # Update running reward to check condition for solving
   memory_episode_reward.append(episode_reward)
 
@@ -83,6 +72,24 @@ while True:
 
   running_reward = np.mean(memory_episode_reward)
   episode_count += 1
+
+  if (episode_count % episode_log == 0):
+    print(
+      '\n'
+      'Episode {e}\n'
+      'Frame       {f:7d}\n'
+      'Frames/sec  {fs:9.2f}\n'
+      'Epsilon     {eps:9.2f}\n'
+      'Mean Reward {r:9.2f}\n'.format(
+        e=episode_count,
+        f=frame_count,
+        fs=episode_frame_count / (time.time() - start),
+        eps=agent.epsilon,
+        r=running_reward
+      )
+    )
+
+  agent.checkpoint(episode_count)
 
   if done and info['lives'] == 2:
     print("Solved at episode {}!".format(episode_count))
