@@ -9,6 +9,7 @@ discrete_actions = [x for x in range(0, 8)]
 class Env():
   def __init__ (self):
     self.env = retro.make(game='SpaceInvaders-Nes')
+    self.actions = discrete_actions
 
   def reset (self):
     return self.process_frame(self.env.reset())

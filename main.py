@@ -3,9 +3,14 @@ import numpy as np
 
 from env import Env, discrete_actions
 from agent import Agent
+from config import should_replay_checkpoint, checkpoint_path
 
 # Environment
 env = Env()
+if should_replay_checkpoint:
+  Agent.replay(env, checkpoint_path, 1, 60, True)
+
+  exit()
 
 # Agent
 agent = Agent(state_shape=np.shape(env.reset()), actions=discrete_actions)
@@ -18,7 +23,7 @@ memory_episode_reward = []
 frame_count     = 0
 running_reward  = 0
 episode_count   = 0
-episode_log     = 100
+episode_log     = 1
 frame_count     = 0
 
 while True:
@@ -30,7 +35,7 @@ while True:
     frame_count += 1
 
     # Show env
-    env.render()
+    # env.render()
 
     # Run agent
     action = agent.run(state)
@@ -79,6 +84,10 @@ while True:
   running_reward = np.mean(memory_episode_reward)
   episode_count += 1
 
-  if running_reward > 4000:  # Condition to consider the task solved
+  if done and info['lives'] == 2:
     print("Solved at episode {}!".format(episode_count))
-    break
+
+    agent.save()
+    print("Agent saved with success!")
+
+    exit()

@@ -1,12 +1,29 @@
 import numpy as np
 import random
 import time
+import os
 
 import tensorflow as tf
-from tensorflow.keras import layers, Model, optimizers, losses
+from model import build_model
+from tensorflow.keras import optimizers, losses, models
 
 class Agent:
   def __init__ (self, state_shape, actions):
+    # set model file name
+    self.model_name = time.strftime("%Y-%m-%d_%H:%M:%S", time.gmtime())
+    self.model_path = './models/{name}'.format(name=self.model_name)
+    self.checkpoints_path = '{m}/checkpoints'.format(m=self.model_path)
+
+    # create models folder to save later
+    if not os.path.isdir('./models'):
+      os.mkdir('./models')
+
+    if not os.path.isdir(self.model_path):
+      os.mkdir(self.model_path)
+
+    if not os.path.isdir(self.checkpoints_path):
+      os.mkdir(self.checkpoints_path)
+
     self.state_shape = state_shape
     self.actions = actions
     self.actions_n = len(self.actions)
@@ -18,13 +35,14 @@ class Agent:
 
     self.batch_size = 32
 
-    self.model = self.build_model()
-    self.model_target = self.build_model()
+    self.model = self.build_model(self.state_shape, self.actions_n)
+    self.model_target = self.build_model(self.state_shape, self.actions_n)
     self.loss_function = losses.Huber()
 
-    self.update_after_actions = 4
+    self.learn_after_actions = 4
     self.update_target_model = 10000
     self.max_memory_length = 100000
+    self.checkpoint_each = 10000
 
     self.memory_action         = []
     self.memory_state          = []
@@ -32,19 +50,41 @@ class Agent:
     self.memory_rewards        = []
     self.memory_done           = []
 
-  def build_model (self):
-    inputs = layers.Input(self.state_shape)
+  @staticmethod
+  def replay (env, path, amount=1, fps=60, checkpooint=False):
+    state = env.reset()
 
-    layer1 = layers.Conv2D(32, 8, strides=4, activation="relu")(inputs)
-    layer2 = layers.Conv2D(64, 4, strides=2, activation="relu")(layer1)
-    layer3 = layers.Conv2D(64, 3, strides=1, activation="relu")(layer2)
+    if checkpooint:
+      model = build_model(np.shape(state), len(env.actions))
+      model.load_weights(path)
+    else:
+      model = models.load_model(path)
 
-    layer4 = layers.Flatten()(layer3)
+    for _ in range(amount):
+      while True:
+        # Simulate FPS
+        time.sleep(1/fps)
 
-    layer5 = layers.Dense(512, activation="relu")(layer4)
-    action = layers.Dense(self.actions_n, activation="linear")(layer5)
+        # Render Env
+        env.render()
 
-    return Model(inputs=inputs, outputs=action)
+        # Get best action for current state
+        state_tensor = tf.convert_to_tensor(state)
+        state_tensor = tf.expand_dims(state_tensor, 0)
+        action_probs = model(state_tensor, training=False)
+        action = tf.argmax(action_probs[0]).numpy()
+
+        # Perform action
+        next_state, _, done, _ = env.step(action)
+        
+        # Update Env state
+        state = next_state
+
+        if done:
+          break
+
+    while True:
+      continue
 
   def add (self, experience):
     self.memory_action.append(experience[0])
@@ -52,6 +92,13 @@ class Agent:
     self.memory_state_next.append(experience[2])
     self.memory_rewards.append(experience[3])
     self.memory_done.append(experience[4])
+
+    if (len(self.memory_rewards) > self.max_memory_length):
+      del self.memory_rewards[:1]
+      del self.memory_state[:1]
+      del self.memory_state_next[:1]
+      del self.memory_action[:1]
+      del self.memory_done[:1]
 
   def run (self, state):
     if np.random.rand() < self.epsilon:
@@ -70,7 +117,7 @@ class Agent:
   def learn (self, frame_count):
     optimizer = optimizers.Adam(learning_rate=0.00025, clipnorm=1.0)
 
-    if (frame_count % self.update_after_actions == 0 and len(self.memory_done) > self.batch_size):
+    if (frame_count % self.learn_after_actions == 0 and len(self.memory_done) > self.batch_size):
       # Get indices of samples for replay buffers
       indices = np.random.choice(range(len(self.memory_done)), size=self.batch_size)
 
@@ -122,53 +169,12 @@ class Agent:
       grads = tape.gradient(loss, self.model.trainable_variables)
       optimizer.apply_gradients(zip(grads, self.model.trainable_variables))
 
-      # if (frame_count % self.update_target_model == 0):
-      #   # update the the target network with new weights
-      #   self.model_target.set_weights(self.model.get_weights())
+    if (frame_count % self.update_target_model == 0):
+      # update the the target network with new weights
+      self.model_target.set_weights(self.model.get_weights())
 
-      # # Limit the state and reward history
-      # if (len(self.memory_rewards) > self.max_memory_length):
-      #   del self.memory_rewards[:1]
-      #   del self.memory_state[:1]
-      #   del self.memory_state_next[:1]
-      #   del self.memory_action[:1]
-      #   del self.memory_done[:1]
+    if (frame_count % self.checkpoint_each == 0):
+      self.model.save_weights('{p}/{f}.check'.format(p=self.checkpoints_path, f=frame_count))
 
-  # def replay(self, env, model_path, n_replay, plot):
-  #   ckpt = tf.train.latest_checkpoint(model_path)
-  #   saver = tf.train.import_meta_graph(ckpt + '.meta')
-  #   graph = tf.get_default_graph()
-
-  #   input = graph.get_tensor_by_name('input:0')
-  #   output = graph.get_tensor_by_name('online/output/BiasAdd:0')
-
-  #   # Replay RL agent
-  #   state = env.process_frame(env.reset())
-  #   total_reward = 0
-  #   with tf.Session() as sess:
-  #     saver.restore(sess, ckpt)
-  #     for _ in range(n_replay):
-  #       step = 0
-  #       while True:
-  #         time.sleep(0.01)
-  #         env.render()
-  #         # Plot
-  #         if plot:
-  #           if step % 100 == 0:
-  #             self.visualize_layer(session=sess, layer=self.conv_2, state=state, step=step)
-  #         # Action
-  #         if np.random.rand() <= 0:
-  #           action = self.actions.sample()
-  #         else:
-  #           q = sess.run(fetches=output, feed_dict={input: np.expand_dims(state, 0)})
-  #           action = np.argmax(q)
-
-  #         next_state, reward, done, info = env.step(action)
-  #         total_reward += reward
-  #         state = env.process_frame(next_state)
-  #         step += 1
-
-  #         if done:
-  #           break
-
-  #   env.close()
+  def save (self):
+    self.model.save(self.model_name + '.model')
