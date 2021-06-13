@@ -1,5 +1,6 @@
 from tensorflow.keras import layers, Model
 
+# Builda o modelo
 def build_model (state_shape, actions_n):
   inputs = layers.Input(state_shape)
 
@@ -9,7 +10,9 @@ def build_model (state_shape, actions_n):
 
   layer4 = layers.Flatten()(layer3)
 
-  layer5 = layers.Dense(512, activation="relu")(layer4)
+  layer5 = layers.Dense(state_shape[0] * state_shape[1], activation="relu")(layer4)
   action = layers.Dense(actions_n, activation="linear")(layer5)
 
-  return Model(inputs=inputs, outputs=action)
+  model = Model(inputs=inputs, outputs=action)
+
+  return model
